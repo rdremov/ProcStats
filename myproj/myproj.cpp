@@ -1,10 +1,10 @@
 #include "cstdio"
 #include "../DllFoo/foo.h"
-#include "../DllBar/bar.h"
+//#include "../DllBar/bar.h"
 
 int main() {
     printf("myproj inside main\n");
     foo();
-    bar();
+    //bar();
     return 0;
 }

@@ -6,10 +6,12 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "myproj", "myproj\myproj.vcxproj", "{21571CE4-75D5-4912-BCB6-F2DCD273193A}"
 	ProjectSection(ProjectDependencies) = postProject
 		{F1D86C37-382E-4F63-95D4-F60A68AD09A7} = {F1D86C37-382E-4F63-95D4-F60A68AD09A7}
-		{9E687CB6-E6B4-4500-BC24-C54560B3F611} = {9E687CB6-E6B4-4500-BC24-C54560B3F611}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DllFoo", "DllFoo\DllFoo.vcxproj", "{F1D86C37-382E-4F63-95D4-F60A68AD09A7}"
+	ProjectSection(ProjectDependencies) = postProject
+		{9E687CB6-E6B4-4500-BC24-C54560B3F611} = {9E687CB6-E6B4-4500-BC24-C54560B3F611}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ProcStats", "ProcStats\ProcStats.vcxproj", "{82576E59-6D97-4A62-8440-FB253C53A7D8}"
 	ProjectSection(ProjectDependencies) = postProject
@@ -17,6 +19,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ProcStats", "ProcStats\Proc
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DllBar", "DllBar\DllBar.vcxproj", "{9E687CB6-E6B4-4500-BC24-C54560B3F611}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DllDiff", "DllDiff\DllDiff.vcxproj", "{E180C76F-33A6-4A03-91D2-F1184CAF675C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -58,6 +62,14 @@ Global
 		{9E687CB6-E6B4-4500-BC24-C54560B3F611}.Release|x64.Build.0 = Release|x64
 		{9E687CB6-E6B4-4500-BC24-C54560B3F611}.Release|x86.ActiveCfg = Release|Win32
 		{9E687CB6-E6B4-4500-BC24-C54560B3F611}.Release|x86.Build.0 = Release|Win32
+		{E180C76F-33A6-4A03-91D2-F1184CAF675C}.Debug|x64.ActiveCfg = Debug|x64
+		{E180C76F-33A6-4A03-91D2-F1184CAF675C}.Debug|x64.Build.0 = Debug|x64
+		{E180C76F-33A6-4A03-91D2-F1184CAF675C}.Debug|x86.ActiveCfg = Debug|Win32
+		{E180C76F-33A6-4A03-91D2-F1184CAF675C}.Debug|x86.Build.0 = Debug|Win32
+		{E180C76F-33A6-4A03-91D2-F1184CAF675C}.Release|x64.ActiveCfg = Release|x64
+		{E180C76F-33A6-4A03-91D2-F1184CAF675C}.Release|x64.Build.0 = Release|x64
+		{E180C76F-33A6-4A03-91D2-F1184CAF675C}.Release|x86.ActiveCfg = Release|Win32
+		{E180C76F-33A6-4A03-91D2-F1184CAF675C}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

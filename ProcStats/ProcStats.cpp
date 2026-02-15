@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
 #include <windows.h>
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <chrono>
@@ -9,49 +10,46 @@
 #include <unordered_map>
 #include <vector>
 
-static std::string utf16_to_utf8(const wchar_t* utf16_str, int len) {
-    if (!utf16_str)
+static std::string utf16_to_utf8(const wchar_t* utf16, int len) {
+    if (!utf16)
         return "";
     if (len < 0)
-        len = (int)wcslen(utf16_str);
+        len = (int)wcslen(utf16);
     if (!len)
         return "";
-    int size_needed = WideCharToMultiByte(CP_UTF8, 0, utf16_str, len, NULL, 0, NULL, NULL);
-    std::string utf8_str(size_needed, 0);
-    WideCharToMultiByte(CP_UTF8, 0, utf16_str, len, &utf8_str[0], size_needed, NULL, NULL);
-    return utf8_str;
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, utf16, len, NULL, 0, NULL, NULL);
+    std::string utf8(size_needed, 0);
+    WideCharToMultiByte(CP_UTF8, 0, utf16, len, &utf8[0], size_needed, NULL, NULL);
+    return utf8;
 }
 
-static std::string get_output_str(const void* pstr, int len, bool unicode, HANDLE hProcess) {
-    std::string name;
+static std::string get_process_str(HANDLE hProcess, const void* pstr, int len, bool unicode) {
+    std::string str;
     if (pstr) {
-        // Read the pointer to the string from the debugee's address space
-        char buf[1024];
+        char buf[4096];
+        size_t size;
         if (len < 0)
-            len = sizeof(buf);
+            size = sizeof(buf);
         else
-            len += unicode ? 2 : 1;
-        assert(len <= sizeof(buf));
-        if (ReadProcessMemory(hProcess, pstr, buf, len, NULL))
+            size = len;
+        assert(size <= sizeof(buf));
+        if (ReadProcessMemory(hProcess, pstr, buf, size, NULL))
             if (unicode)
-                name = utf16_to_utf8((const wchar_t*)buf, len);
+                str = utf16_to_utf8((const wchar_t*)buf, len);
             else
-                name.assign(buf, len);
+                str.assign(buf, size);
     }
-    return name;
+    return str;
 }
 
-static std::string get_image_str(void* imageName, bool unicode, HANDLE hProcess) {
-    std::string name;
-    if (imageName) {
-        // Read the pointer to the string from the debugee's address space
-        void* namePtr{};
-        if (ReadProcessMemory(hProcess, imageName, &namePtr, sizeof(void*), NULL))
-            name = get_output_str(namePtr, -1, unicode, hProcess);
+static std::string get_image_str(void* image, bool unicode, HANDLE hProcess) {
+    std::string str;
+    if (image) {
+        void* ptr{};
+        if (ReadProcessMemory(hProcess, image, &ptr, sizeof(void*), NULL))
+            str = get_process_str(hProcess, ptr, -1, unicode);
     }
-    if (name.empty())
-        name = "?";
-    return name;
+    return str;
 }
 
 
@@ -103,26 +101,28 @@ class ProcStats {
 
     std::vector<INFO> infos_;
     std::unordered_map<DWORD_PTR, size_t> id2index_;
-    std::unordered_map<DWORD, HANDLE> processId2Handle_;
+    std::unordered_map<DWORD, HANDLE> pid2handle_;
+    int unknownDllIndex{};
 
 public:
     ProcStats() {
         time_stamp();
     }
 
-    void print(const char* outFile, const char* flt) {
+    void print(const char* outFile) {
         auto finish = time_stamp();
-        printf("Stats %g seconds %d infos:\n", finish, (int)infos_.size());
-        FILE* pf = outFile ? fopen(outFile, "w") : stdout;
         static const char* typeStrs[] = {"PROCESS", "THREAD", "DLL", "OUTPUT", "RIP", "EXCEPTION"};
+        printf("Stats %g seconds %d infos:\n", finish, (int)infos_.size());
+        std::string str;
+        FILE* pf = fopen(outFile, "w");
         for(const auto& info : infos_) {
-            if (!flt || strchr(flt, *typeStrs[info.type])) {
-                fprintf(pf, "%s %d %d %g %g %s\n",
-                    typeStrs[info.type], info.pid, info.tid, info.start, info.finish, info.str.c_str());
-            }
+            str = info.str;
+            std::replace(str.begin(), str.end(), '\n', ' ');
+            std::replace(str.begin(), str.end(), '\r', ' ');
+            fprintf(pf, "%s %d %d %g %g \"%s\"\n",
+                typeStrs[info.type], info.pid, info.tid, info.start, info.finish, str.c_str());
         }
-        if (outFile)
-            fclose(pf);
+        fclose(pf);
     }
 
     void onCreateProcess(const CREATE_PROCESS_DEBUG_INFO& debugInfo, DWORD processId) {
@@ -131,14 +131,14 @@ public:
         auto index = infos_.size();
         id2index_[processId] = index;
         infos_.emplace_back(processId, debugInfo.lpBaseOfImage);
-        processId2Handle_[processId] = debugInfo.hProcess;
+        pid2handle_[processId] = debugInfo.hProcess;
     }
 
     auto onExitProcess(const EXIT_PROCESS_DEBUG_INFO& debugInfo, DWORD processId) {
         auto index = id2index_[processId];
         infos_[index].finish = time_stamp();
-        processId2Handle_.erase(processId);
-        return processId2Handle_.empty();
+        pid2handle_.erase(processId);
+        return pid2handle_.empty();
     }
 
     void onCreateThread(const CREATE_THREAD_DEBUG_INFO& debugInfo, DWORD processId, DWORD threadId) {
@@ -155,9 +155,11 @@ public:
     }
 
     void onLoadDll(const LOAD_DLL_DEBUG_INFO& debugInfo, DWORD processId, DWORD threadId) {
-        auto name = get_image_str(debugInfo.lpImageName, debugInfo.fUnicode, processId2Handle_[processId]);
         auto index = infos_.size();
         id2index_[(DWORD_PTR)debugInfo.lpBaseOfDll] = index;
+        auto name = get_image_str(debugInfo.lpImageName, debugInfo.fUnicode, pid2handle_[processId]);
+        if (name.empty())
+            name = "?" + std::to_string(++unknownDllIndex);
         infos_.emplace_back(processId, threadId, debugInfo.lpBaseOfDll, name);
     }
     
@@ -167,8 +169,8 @@ public:
     }
 
     void onOutputString(const OUTPUT_DEBUG_STRING_INFO& debugInfo, DWORD processId, DWORD threadId) {
-        auto output = get_output_str(debugInfo.lpDebugStringData, debugInfo.nDebugStringLength,
-            debugInfo.fUnicode, processId2Handle_[processId]);
+        auto output = get_process_str(pid2handle_[processId], debugInfo.lpDebugStringData,
+            debugInfo.nDebugStringLength, debugInfo.fUnicode);
         infos_.emplace_back(processId, threadId, output);
     }
 
@@ -188,42 +190,32 @@ public:
 
 int main(int argc, char *argv[]) {
 
-    if (argc <2) {
-        printf("USE: ProcStats.exe -o log.txt -f D \"c:\\full\\path\\myProcess.exe\"\n");
+    if (argc != 3) {
+        printf("USE: ProcStats.exe log.txt \"c:\\full\\path\\myProcess.exe\"\n");
         return 1;
     }
 
-    int k = 1;
-
-    const char* outFile{};
-    if (0 == strcmp(argv[k], "-o"))
-        outFile = argv[(++k)++];
-
-    const char* flt{};
-    if (0 == strcmp(argv[k], "-f"))
-        flt = argv[(++k)++];
-
-    auto cmd = argv[k];
-
-    ProcStats stats;
+    const char* outFile = argv[1];
+    auto cmd = argv[2];
 
     STARTUPINFOA si{sizeof(si)};
     PROCESS_INFORMATION pi{};
     if (!CreateProcessA(nullptr, cmd, nullptr, nullptr, false,
-        DEBUG_ONLY_THIS_PROCESS, nullptr, nullptr, &si, &pi)) {
+        DEBUG_PROCESS, nullptr, nullptr, &si, &pi)) {
         printf("CreateProcess failed error=%d cmd=%s\n", GetLastError(), cmd);
         return 1;
     }
 
-    DEBUG_EVENT e{};
+    ProcStats stats;
     bool stop{};
 
     for (int n=1; !stop; ++n) {
         DWORD status = DBG_CONTINUE;
+        DEBUG_EVENT e{};
         if (!WaitForDebugEvent(&e, INFINITE))
             break;
 
-        printf("%d\r", n);
+        printf("event %d\r", n);
 
         switch (e.dwDebugEventCode) {
         case EXCEPTION_DEBUG_EVENT:
@@ -263,6 +255,6 @@ int main(int argc, char *argv[]) {
     CloseHandle(pi.hThread);
 
     printf("\n");
-    stats.print(outFile, flt);
+    stats.print(outFile);
     return 0;
 }
